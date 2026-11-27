@@ -1,4 +1,5 @@
 <script>
+  import SystemSurface from "../../ui-schema/views/SystemSurface.svelte";
   import { createEventDispatcher, onDestroy, onMount, tick } from "svelte";
   import { fade, scale } from "svelte/transition";
   import { quintOut } from "svelte/easing";
@@ -202,6 +203,35 @@
 
   // A abertura é transitória: toda visita começa com as seções fechadas.
   let openSection = null;
+  let schemaResult = null;
+  let schemaError = "";
+  let schemaRequest = 0;
+
+  function schemaUrl(entry, endpoint, id) {
+    const query = new URLSearchParams({ tab: entry.tab || entry.id, session_id: id });
+    return `/${encodeURIComponent(entry.packageName)}/system/${endpoint}?${query}`;
+  }
+
+  async function loadSchemaEntry(entry) {
+    const request = ++schemaRequest;
+    const id = sessionId;
+    schemaResult = null;
+    schemaError = "";
+    try {
+      if (!entry.packageName) throw new Error("Pacote da configuração indisponível.");
+      const response = await fetch(schemaUrl(entry, "view", id));
+      const data = await response.json();
+      if (!response.ok || data.status >= 400 || !data.surface ||
+          (entry.surface && data.surface.kind !== entry.surface)) {
+        throw new Error(data.mensagem || data.error || "Não foi possível abrir a configuração.");
+      }
+      if (request === schemaRequest && sessionId === id && openSection === entry.id) {
+        schemaResult = { surface: data.surface, state: data.state || {}, actionUrl: schemaUrl(entry, "action", id) };
+      }
+    } catch (error) {
+      if (request === schemaRequest && sessionId === id && openSection === entry.id) schemaError = error.message;
+    }
+  }
   $: if (!stateOpen) openSection = null;
   $: if (sessionId) openSection = null;
 
@@ -1600,6 +1630,7 @@
                       // sessão. Sem isso, um `ollama pull` só apareceria depois
                       // de recarregar a página.
                       if (next && entry.native === "model" && sessionId) fetchModel(sessionId);
+                      if (next && entry.renderer === "schema") loadSchemaEntry(entry);
                     }}
                   >
                     <span class="ib-box-title">{entry.label}</span>
@@ -1636,6 +1667,12 @@
                         None: normal session, no specialist prompt or tool restriction.
                       {/if}
                     </p>
+                  {:else if entry.renderer === "schema"}
+                    {#if openSection === entry.id}
+                      {#if schemaError}<p class="box-note" role="alert">{schemaError}</p>
+                      {:else if schemaResult}<SystemSurface {...schemaResult} />
+                      {:else}<p class="box-note" role="status">Carregando…</p>{/if}
+                    {/if}
                   {:else if entry.url}
                     <PackageWidget
                       url={entry.url}
