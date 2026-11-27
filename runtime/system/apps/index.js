@@ -480,11 +480,19 @@ function getPackageViews() {
     const pkgJsonPath = path.join(pkgPath, 'package.json');
     const viewsPath = path.join(pkgPath, 'views');
 
-    if (fs.existsSync(pkgJsonPath) && fs.existsSync(viewsPath)) {
-      const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf-8'));
+    if (fs.existsSync(pkgJsonPath)) {
+      const hasViews = fs.existsSync(viewsPath);
+      let pkgJson;
+      try {
+        pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf-8'));
+      } catch (error) {
+        if (!hasViews) return;
+        throw error;
+      }
       const manifest = pkgJson.manifest || {};
       if (manifest.hidden === true || (process.env.TENANT_ID && manifest.tenantHidden === true)) return;
       const pkgName = pkgJson.name || pkgDir;
+      if (!hasViews && manifest.inputbar?.renderer !== 'schema') return;
 
       // A existência de um componente em `views/` não é uma declaração de
       // aplicativo. Widgets, editores auxiliares e previews também vivem ali
@@ -498,7 +506,7 @@ function getPackageViews() {
       // `.public.svelte` é marcador de filesystem do Lógos, não parte da URL.
       // Consolidar as variantes mantém a mesma rota limpa do resolvedor.
       const discoveredViews = new Map();
-      for (const file of fs.readdirSync(viewsPath)) {
+      for (const file of hasViews ? fs.readdirSync(viewsPath) : []) {
         if (!file.endsWith('.svelte')) continue;
         const publicMatch = file.match(/^(.*)\.public\.svelte$/i);
         const viewName = publicMatch ? publicMatch[1] : file.replace(/\.svelte$/i, '');
@@ -643,6 +651,23 @@ async function getActiveApps(_currentUrl = '', mobileAppId = '', options = {}) {
     const iconDarkPromise = iconDark
       ? resolveIcon(pkg.fullPath, iconDark, coloredSvg)
       : Promise.resolve(null);
+
+    const bar = manifest.inputbar;
+    if (bar?.id && bar.renderer === 'schema') {
+      nativeAppsPromises.push((async () => {
+        const [icon, iconDark] = await Promise.all([iconPromise, iconDarkPromise]);
+        return {
+          id: `inputbar:${pkg.package.name}:${bar.id}`,
+          packageName: pkg.package.name,
+          name: bar.label || manifest.name || pkg.package.name,
+          inputbar: bar,
+          icon: icon?.type === 'raster' ? icon.value : null,
+          iconSvg: icon?.type === 'svg' ? icon.value : null,
+          iconDark: iconDark?.type === 'raster' ? iconDark.value : null,
+          iconDarkSvg: iconDark?.type === 'svg' ? iconDark.value : null,
+        };
+      })());
+    }
 
     const desktopWidget = normalizeDesktopWidgetContribution({
       packageName: pkg.package.name,
@@ -843,7 +868,7 @@ async function getActiveApps(_currentUrl = '', mobileAppId = '', options = {}) {
           const normalized = normalizeWorkCanvasContribution(workCfg);
           if (matchesView && normalized?.renderer === 'view') appObj.workCanvas = { ...normalized, url: appObj.url };
         }
-        if (manifest.inputbar) {
+        if (manifest.inputbar && manifest.inputbar.renderer !== "schema") {
           // Entrada contribuída na InputBar (ver views/lib/inputbar_bootstrap.js).
           // Mesma regra de `menu`: manifest.inputbar.view escolhe qual view do
           // pacote abre no popover; sem isso, a view default.

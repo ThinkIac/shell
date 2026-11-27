@@ -193,6 +193,10 @@ export async function bootstrapInputBarEntries() {
             url: cfg.view === false ? null : app.url,
             event: cfg.event || null,
             command: cfg.command || null,
+            renderer: cfg.renderer || null,
+            surface: cfg.surface || null,
+            tab: cfg.tab || null,
+            packageName: app.packageName || null,
             defaultHidden: !!cfg.hidden,
             kindSource: "package",
         });

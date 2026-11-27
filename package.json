@@ -4,7 +4,8 @@
   "description": "Shell principal agnóstico do ThinkIac para apps, agentes e serviços",
   "type": "module",
   "logosDependencies": {
-    "file-manager": "*"
+    "file-manager": "*",
+    "ui-schema": "*"
   },
   "manifest": {
     "name": "ThinkIac Shell",
